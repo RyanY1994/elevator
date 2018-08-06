@@ -41,13 +41,14 @@ public:
 		this->dir = tmp_dir;
 	}
 
-	void wait(int &elevatorStair, bool &isOpen) {
+	void wait(int &elevatorStair, bool &isOpen, int &elevatorDir) {
 		std::thread th([&]() -> void {
-			while(elevatorStair != nowStair || isOpen == false){
+			//TODO people按了向下的按钮可能在电梯上行但是开门时进去；
+			while(elevatorStair != nowStair || isOpen == false || elevatorDir != this->dir){
 				std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			int targetStair = rand() % 16 + 1;
+			int targetStair = nowStair + (dir == ElevatorSpace::DIR_DOWN? -2 : 3);
 			this->target = targetStair;
 			std::cout << "people " << id << " 等到了电梯，并进入了电梯，按了 "<< targetStair << "楼" << std::endl;
 			while(elevatorStair != targetStair || isOpen == false) {
@@ -123,12 +124,14 @@ private:
 
 void Elevator::upStairs(People *people)
 {
+	//TODO 加锁
 	people->setDir(ElevatorSpace::DIR_UP);
 	mTask.push_back(people);
 }
 
 void Elevator::downStairs(People *people)
 {
+	//TODO JIASUO
 	people->setDir(ElevatorSpace::DIR_DOWN);
 	mTask.push_back(people);
 }
@@ -142,7 +145,7 @@ void Elevator::treatPeople(People *people, bool isUp)
 		std::cout << "people " << people->getId() << " 按了向下的按钮" << std::endl;
 		this->downStairs(people);
 	}
-	people->wait(mNowStair, isOpen);
+	people->wait(mNowStair, isOpen, mDir);
 }
 
 //此方法中对mTask进行各种处理。
@@ -202,6 +205,14 @@ void Elevator::run()
 					isOpen = true;
 				}
 			}
+			std::cout << "======" << mNowStair;
+			if (mDir == ElevatorSpace::DIR_DOWN) {
+				std::cout << "====== 下" << std::endl;
+			} else if(mDir == ElevatorSpace::DIR_UP) {
+				std::cout << "====== 上" << std::endl;
+			} else {
+				std::cout << "====== 停" << std::endl;
+			}
 			if (isOpen) {
 				std::cout << "电梯开门了...电梯现在在" << mNowStair << "楼" << std::endl;
 				std::this_thread::sleep_for(std::chrono::milliseconds(2000));
@@ -212,47 +223,37 @@ void Elevator::run()
 				mDir = ElevatorSpace::DIR_NO_DIR;
 			}
 			if (mDir == ElevatorSpace::DIR_UP) {
+				bool continueUp = false;
 				for (auto people : mTask) {
 					if (people->getNowStair() > mNowStair ||
 						(people->getTarget() != ElevatorSpace::ELEVATOR_UNPRESS && people->getTarget() > mNowStair)) {
-
-					} else {
-						mDir = ElevatorSpace::DIR_DOWN;
+						if (people->getDir() == mDir) {
+							continueUp = true;
+						}
 					}
 				}
+				if (continueUp == false) {
+					mDir = ElevatorSpace::DIR_DOWN;
+				}
 			} else if (mDir == ElevatorSpace::DIR_DOWN) {
+				bool continueDown = false;
 				for (auto people : mTask) {
 					if (people->getNowStair() < mNowStair ||
 						(people->getTarget() != ElevatorSpace::ELEVATOR_UNPRESS && people->getTarget() < mNowStair)) {
-
-					} else {
-						mDir = ElevatorSpace::DIR_UP;
+						if(people->getDir() == mDir) {
+							continueDown = true;
+						}
 					}
 				}
+				if (continueDown == false) {
+					mDir = ElevatorSpace::DIR_UP;
+				}
 			}
+
 			std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 		}
 	});
 	th.detach();
-}
-
-void Elevator::pressButton(People *people)
-{
-	int nowStair = getNowStair();
-	int targetStair = people->getTarget();
-	if (mDir > 0) {
-		if (targetStair <= nowStair) {
-			std::cout << "现在楼层是" << nowStair << " 目标楼层是" << targetStair << ", 会忽略掉。" << std::endl;
-			return;
-		}
-	} else if(mDir < 0){
-		if (targetStair >= nowStair) {
-			std::cout << "现在楼层是" << nowStair << " 目标楼层是" << targetStair << ", 会忽略掉。" << std::endl;
-			return;
-		}
-	}
-	//进电梯时已经添加了
-	//mTask.insert(people);
 }
 
 int main()
@@ -260,12 +261,12 @@ int main()
 	Elevator *elevator = new Elevator(-3, 16);
 	elevator->run();
 
-	for(int i = 1; i <= 3; i++) {
+	for(int i = 1; i <= 4; i++) {
 		People *people = new People(i, rand() % 16 + 1);
 		bool isUp = (i & 1) == 1;
 		elevator->treatPeople(people, isUp);
 		std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 	}
-	std::this_thread::sleep_for(std::chrono::seconds(60));
+	std::this_thread::sleep_for(std::chrono::seconds(900));
 	return 0;
 }
