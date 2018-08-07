@@ -2,6 +2,8 @@
 #include <set>
 #include <list>
 #include <thread>
+#include <cstdlib>
+#include <mutex>
 
 namespace ElevatorSpace{
 
@@ -16,14 +18,14 @@ enum {
 	ELEVATOR_GET_NEXT_TARGET = 4,
 };
 }
-
+//TODO É¾³ıÎŞÓÃ²¿·Ö
 class People {
 public:
 	People(int id, int nowStair): id(id), nowStair(nowStair),
 								  target(ElevatorSpace::ELEVATOR_UNPRESS),
 								  dir(ElevatorSpace::DIR_UP)
 	{
-		std::cout << "people " << id << " æ¥äº†ã€‚æ‰€åœ¨æ¥¼å±‚æ˜¯" << nowStair << std::endl;
+		printf("people%d À´ÁË¡£ËùÔÚÂ¥²ãÊÇ%d\n",id, nowStair);
 	}
 	int getId() const{
 		return id;
@@ -43,19 +45,19 @@ public:
 
 	void wait(int &elevatorStair, bool &isOpen, int &elevatorDir) {
 		std::thread th([&]() -> void {
-			//TODO peopleæŒ‰äº†å‘ä¸‹çš„æŒ‰é’®å¯èƒ½åœ¨ç”µæ¢¯ä¸Šè¡Œä½†æ˜¯å¼€é—¨æ—¶è¿›å»ï¼›
+			//TODO people°´ÁËÏòÏÂµÄ°´Å¥¿ÉÄÜÔÚµçÌİÉÏĞĞµ«ÊÇ¿ªÃÅÊ±½øÈ¥£»
 			while(elevatorStair != nowStair || isOpen == false || elevatorDir != this->dir){
 				std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
 			int targetStair = nowStair + (dir == ElevatorSpace::DIR_DOWN? -2 : 3);
 			this->target = targetStair;
-			std::cout << "people " << id << " ç­‰åˆ°äº†ç”µæ¢¯ï¼Œå¹¶è¿›å…¥äº†ç”µæ¢¯ï¼ŒæŒ‰äº† "<< targetStair << "æ¥¼" << std::endl;
+			printf("people%d µÈµ½ÁËµçÌİ£¬²¢½øÈëÁËµçÌİ£¬°´ÁË%dÂ¥\n", id, targetStair);
 			while(elevatorStair != targetStair || isOpen == false) {
 				std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(100));
-			std::cout << "people " << id << " å‡ºäº†ç”µæ¢¯" << std::endl;
+			printf("people%d ³öÁËµçÌİ\n",id);
 			nowStair = ElevatorSpace::ELEVATOR_PROPLE_OUT;
 			target = ElevatorSpace::ELEVATOR_PROPLE_OUT;
 		});
@@ -95,12 +97,6 @@ public:
 	size_t getPeopleCount() {
 		return mPeopleCount;
 	}
-	void showPeople() {
-		for(auto id : mPeopleId) {
-			std::cout << id << " ";
-		}
-		std::cout << std::endl;
-	}
 	void run();
 	struct ComparePeople: public std::binary_function<People *, People *, bool> {
 		bool operator() (const People *a, const People *b) const {
@@ -112,6 +108,7 @@ public:
 
 private:
 	std::list<People*> mTask;
+	std::mutex mTaskLock;
 	//std::set<People*, ComparePeople> Task;
 	std::set<int> mPeopleId;
 	size_t mPeopleCount;
@@ -124,7 +121,8 @@ private:
 
 void Elevator::upStairs(People *people)
 {
-	//TODO åŠ é”
+	//TODO ¼ÓËø
+	std::lock_guard<std::mutex> lck(this->mTaskLock);
 	people->setDir(ElevatorSpace::DIR_UP);
 	mTask.push_back(people);
 }
@@ -132,6 +130,7 @@ void Elevator::upStairs(People *people)
 void Elevator::downStairs(People *people)
 {
 	//TODO JIASUO
+    std::lock_guard<std::mutex> lck(this->mTaskLock);
 	people->setDir(ElevatorSpace::DIR_DOWN);
 	mTask.push_back(people);
 }
@@ -139,19 +138,20 @@ void Elevator::downStairs(People *people)
 void Elevator::treatPeople(People *people, bool isUp)
 {
 	if (isUp) {
-		std::cout << "people " << people->getId() << " æŒ‰äº†å‘ä¸Šçš„æŒ‰é’®" << std::endl;
+		printf("people%d °´ÁËÏòÉÏµÄ°´Å¥\n", people->getId());
 		this->upStairs(people);
 	} else {
-		std::cout << "people " << people->getId() << " æŒ‰äº†å‘ä¸‹çš„æŒ‰é’®" << std::endl;
+        printf("people%d °´ÁËÏòÏÂµÄ°´Å¥\n", people->getId());
 		this->downStairs(people);
 	}
 	people->wait(mNowStair, isOpen, mDir);
 }
 
-//æ­¤æ–¹æ³•ä¸­å¯¹mTaskè¿›è¡Œå„ç§å¤„ç†ã€‚
+//´Ë·½·¨ÖĞ¶ÔmTask½øĞĞ¸÷ÖÖ´¦Àí¡£
 int Elevator::handleElevatorRequest(int flag)
 {
-	//TODO åŠ é”
+	//TODO ¼ÓËø
+    std::lock_guard<std::mutex> lck(this->mTaskLock);
 	if (flag == ElevatorSpace::ELEVATOR_GET_NEXT_TARGET) {
 		if (mTask.empty()) return ElevatorSpace::ELEVATOR_NO_NEXT_TARGET;
 
@@ -161,6 +161,7 @@ int Elevator::handleElevatorRequest(int flag)
 void Elevator::peopleOut()
 {
 	//todo
+    std::lock_guard<std::mutex> lck(this->mTaskLock);
 	for (auto taskIteraotr = mTask.begin(); taskIteraotr != mTask.end();) {
 		if ((*taskIteraotr)->getNowStair() == ElevatorSpace::ELEVATOR_PROPLE_OUT && (*taskIteraotr)->getTarget() == ElevatorSpace::ELEVATOR_PROPLE_OUT) {
 			delete(*taskIteraotr);
@@ -173,16 +174,20 @@ void Elevator::peopleOut()
 
 void Elevator::run()
 {
-	std::cout << "enter run function" << std::endl;
 	std::thread th([this]() -> void {
 		while(true) {
+		    bool first = true;
 			while (mTask.empty()){
+			    if (first) {
+			        first = false;
+			        printf("µçÌİÔİÊ±Ã»ÓĞÈÎÎñ£¬ÔİÍ£ÖĞ£¬µçÌİÔÚ%dÂ¥\n", mNowStair);
+			    }
 				std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 			}
-			//ç”¨ç¬¬ä¸€ä¸ªäººç°åœ¨çš„æ¥¼å±‚ç¡®å®šä¸Šä¸‹æ–¹å‘
+			//ÓÃµÚÒ»¸öÈËÏÖÔÚµÄÂ¥²ãÈ·¶¨ÉÏÏÂ·½Ïò
 			if (mDir == ElevatorSpace::DIR_NO_DIR) {
-				std::cout << "ç”µæ¢¯å·²ç»å¯åŠ¨" << std::endl;
-				//å…ˆæ¥å…ˆæœåŠ¡
+				printf("µçÌİÒÑ¾­Æô¶¯\n" );
+				//ÏÈÀ´ÏÈ·şÎñ
 				auto people = mTask.front();
 				int target = people->getNowStair();
 				if (mNowStair < target) {
@@ -205,16 +210,16 @@ void Elevator::run()
 					isOpen = true;
 				}
 			}
-			std::cout << "======" << mNowStair;
+			printf("======%d" ,mNowStair);
 			if (mDir == ElevatorSpace::DIR_DOWN) {
-				std::cout << "====== ä¸‹" << std::endl;
+				printf("====== ÏÂ\n");
 			} else if(mDir == ElevatorSpace::DIR_UP) {
-				std::cout << "====== ä¸Š" << std::endl;
+                printf("====== ÉÏ\n");
 			} else {
-				std::cout << "====== åœ" << std::endl;
+                printf("====== Í£\n");
 			}
 			if (isOpen) {
-				std::cout << "ç”µæ¢¯å¼€é—¨äº†...ç”µæ¢¯ç°åœ¨åœ¨" << mNowStair << "æ¥¼" << std::endl;
+				printf("µçÌİ¿ªÃÅÁË...µçÌİÏÖÔÚÔÚ%dÂ¥\n", mNowStair);
 				std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 			}
 			peopleOut();
